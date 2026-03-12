@@ -1,4 +1,4 @@
-# 🔮 Omniscient — The God of All Research Agents
+# 🔮 Omniscient — Best Research Agents
 
 A zero-compromise, Rust-native deep research AI agent designed to run on low-end hardware while outperforming existing research tools.
 
@@ -38,6 +38,8 @@ omniscient status
 
 ## 📦 Architecture
 
+For a detailed breakdown, see the [System Architecture](docs/system_architecture.md).
+
 ```
 omniscient/
 ├── crates/
@@ -49,8 +51,16 @@ omniscient/
 │   └── omniscient-cli/       # CLI interface
 ├── config/
 │   └── omniscient.toml       # Configuration
+├── docs/                     # Technical documentation
 └── gui/                      # Tauri v2 GUI (coming soon)
 ```
+
+## 📊 Knowledge & Schemes
+
+Omniscient uses a dual-database approach for storing research findings. See [Scheme Design](docs/scheme_design.md) for details on:
+- **SurrealDB Entity-Relationship Graph**
+- **Tantivy Full-Text Search Index**
+- **Configuration structure**
 
 ## 🔧 Configuration
 

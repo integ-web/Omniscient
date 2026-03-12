@@ -8,6 +8,8 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 use url::Url;
+use chromiumoxide::browser::{Browser, BrowserConfig as ChromeConfig};
+use futures::StreamExt;
 
 use omniscient_core::error::{OmniscientError, Result};
 use omniscient_core::types::{ContentType, Document, DocumentMetadata};
@@ -25,6 +27,7 @@ pub struct CrawlConfig {
     pub respect_robots_txt: bool,
     pub allowed_domains: Option<Vec<String>>,
     pub max_concurrent: usize,
+    pub use_browser: bool,
 }
 
 impl Default for CrawlConfig {
@@ -38,6 +41,7 @@ impl Default for CrawlConfig {
             respect_robots_txt: true,
             allowed_domains: None,
             max_concurrent: 5,
+            use_browser: false,
         }
     }
 }
@@ -77,8 +81,78 @@ impl WebCrawler {
         }
     }
 
+    /// Fetch a single page using a headless browser (for JS-heavy sites)
+    pub async fn fetch_page_with_browser(&self, url: &str) -> Result<CrawlResult> {
+        info!("Fetching with browser: {}", url);
+
+        let (mut browser, mut handler) = Browser::launch(ChromeConfig::builder().build().map_err(|e| OmniscientError::Web(e.to_string()))?)
+            .await
+            .map_err(|e| OmniscientError::Web(e.to_string()))?;
+
+        // Spawn the handler in the background
+        let handle = tokio::spawn(async move {
+            while let Some(h) = handler.next().await {
+                if h.is_err() {
+                    break;
+                }
+            }
+        });
+
+        let page = browser
+            .new_page(url)
+            .await
+            .map_err(|e| OmniscientError::Web(e.to_string()))?;
+
+        // Wait for it to be fully loaded
+        page.wait_for_navigation()
+            .await
+            .map_err(|e| OmniscientError::Web(e.to_string()))?;
+
+        let html = page
+            .content()
+            .await
+            .map_err(|e| OmniscientError::Web(e.to_string()))?;
+
+        // Close browser
+        browser.close().await.ok();
+        handle.await.ok();
+
+        // Extract content
+        let extracted = self.extractor.extract(&html, url);
+        let links = self.extractor.extract_links(&html, url);
+
+        let document = Document {
+            id: uuid::Uuid::new_v4(),
+            url: Some(url.to_string()),
+            title: extracted.title.clone(),
+            content: extracted.clean_text.clone(),
+            content_type: ContentType::WebPage,
+            metadata: DocumentMetadata {
+                author: extracted.author.clone(),
+                published_date: None,
+                source: url.to_string(),
+                word_count: extracted.clean_text.split_whitespace().count(),
+                language: None,
+                tags: Vec::new(),
+            },
+            extracted_at: chrono::Utc::now(),
+        };
+
+        Ok(CrawlResult {
+            url: url.to_string(),
+            status: 200, // Success if we got here
+            document: Some(document),
+            links,
+            error: None,
+        })
+    }
+
     /// Fetch a single page and extract content
     pub async fn fetch_page(&self, url: &str) -> Result<CrawlResult> {
+        if self.config.use_browser {
+            return self.fetch_page_with_browser(url).await;
+        }
+
         debug!("Fetching: {}", url);
 
         let response = self

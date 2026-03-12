@@ -24,6 +24,7 @@ use omniscient_llm::provider::LlmProvider;
 
 use omniscient_research::report::ReportGenerator;
 use omniscient_research::DeepResearchPipeline;
+use omniscient_web::{WebCrawler, crawler::CrawlConfig};
 
 /// Omniscient — The God of All Research Agents
 #[derive(Parser)]
@@ -78,6 +79,20 @@ enum Commands {
     Compare {
         /// Entities to compare (comma-separated)
         entities: String,
+    },
+
+    /// Crawl a URL and extract content (Firecrawl-style)
+    Crawl {
+        /// URL to crawl
+        url: String,
+
+        /// Use headless browser for JS-heavy sites
+        #[arg(short, long)]
+        browser: bool,
+
+        /// Maximum crawl depth
+        #[arg(short, long, default_value = "0")]
+        depth: usize,
     },
 
     /// Manage configuration
@@ -375,6 +390,64 @@ async fn main() -> Result<()> {
                 println!("{}", toml_str);
             }
         },
+
+        Commands::Crawl { url, browser, depth } => {
+            print_banner();
+            println!(
+                "{} {}",
+                "🕷️  Crawling:".bright_green().bold(),
+                url.bright_white()
+            );
+            println!(
+                "{} {}",
+                "🌐 Mode:".bright_blue().bold(),
+                if browser { "Headless Browser (JS-Enabled)" } else { "Standard HTTP" }
+            );
+
+            let crawl_config = CrawlConfig {
+                max_depth: depth,
+                max_pages: 1, // Start with 1 for direct crawl
+                use_browser: browser,
+                ..Default::default()
+            };
+
+            let crawler = WebCrawler::new(crawl_config);
+            
+            let pb = ProgressBar::new_spinner();
+            pb.set_message("Fetching page content...");
+            pb.enable_steady_tick(Duration::from_millis(100));
+
+            match crawler.fetch_page(&url).await {
+                Ok(result) => {
+                    pb.finish_with_message("Crawl complete!");
+                    if let Some(doc) = result.document {
+                        println!("\n{}", "📄 Content Preview:".bright_cyan().bold());
+                        println!("{}", "━".repeat(40).bright_cyan());
+                        println!("{}", doc.content.chars().take(1000).collect::<String>());
+                        if doc.content.len() > 1000 {
+                            println!("{}", "... [truncated]".bright_black());
+                        }
+                        println!("{}", "━".repeat(40).bright_cyan());
+                        println!(
+                            "   {} {}",
+                            "Title:".bright_blue(),
+                            doc.title.unwrap_or_default()
+                        );
+                        println!(
+                            "   {} {}",
+                            "Words:".bright_blue(),
+                            doc.metadata.word_count
+                        );
+                    } else {
+                        println!("{}", "⚠️  No content extracted.".yellow());
+                    }
+                }
+                Err(e) => {
+                    pb.finish_with_message("Crawl failed");
+                    eprintln!("{} {}", "❌ Error:".bright_red().bold(), e);
+                }
+            }
+        }
 
         Commands::Status => {
             print_banner();
