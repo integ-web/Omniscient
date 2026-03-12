@@ -1,0 +1,6 @@
+/target/
+/crates/omniscient-gui/node_modules/
+/crates/omniscient-gui/dist/
+/.env
+/config/
+*.log

@@ -1,0 +1,79 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/omniscient-core",
+    "crates/omniscient-llm",
+    "crates/omniscient-web",
+    "crates/omniscient-knowledge",
+    "crates/omniscient-research",
+    "crates/omniscient-cli",
+    "crates/omniscient-gui/src-tauri",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+authors = ["Omniscient Contributors"]
+license = "MIT"
+description = "The God of all research agents — Rust-native deep research AI"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+async-trait = "0.1"
+futures = "0.3"
+
+# HTTP & networking
+reqwest = { version = "0.12", features = ["json", "rustls-tls", "cookies", "gzip", "brotli"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Logging & tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
+console = "0.15"
+colored = "3"
+
+# HTML parsing & scraping
+scraper = "0.22"
+url = "2"
+regex = "1"
+
+# Search engine
+tantivy = "0.22"
+
+# Database
+surrealdb = { version = "2", features = ["kv-mem"] }
+
+# Parallel computation
+rayon = "1"
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# Template rendering (for reports)
+tera = "1"
+
+# Markdown
+pulldown-cmark = "0.12"
+
+# Internal crates
+omniscient-core = { path = "crates/omniscient-core" }
+omniscient-llm = { path = "crates/omniscient-llm" }
+omniscient-web = { path = "crates/omniscient-web" }
+omniscient-knowledge = { path = "crates/omniscient-knowledge" }
+omniscient-research = { path = "crates/omniscient-research" }

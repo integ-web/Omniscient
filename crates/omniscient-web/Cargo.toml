@@ -1,0 +1,22 @@
+[package]
+name = "omniscient-web"
+version.workspace = true
+edition.workspace = true
+description = "Web research engine — crawling, scraping, search APIs, academic databases"
+
+[dependencies]
+omniscient-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+scraper.workspace = true
+url.workspace = true
+regex.workspace = true
+uuid.workspace = true
+chrono.workspace = true

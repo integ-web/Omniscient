@@ -1,0 +1,19 @@
+[package]
+name = "omniscient-knowledge"
+version.workspace = true
+edition.workspace = true
+description = "Knowledge system — full-text search (Tantivy) + graph DB (SurrealDB) + vector store"
+
+[dependencies]
+omniscient-core.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tantivy.workspace = true
+surrealdb.workspace = true
+uuid.workspace = true
+chrono.workspace = true

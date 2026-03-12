@@ -1,0 +1,28 @@
+[package]
+name = "omniscient-cli"
+version.workspace = true
+edition.workspace = true
+description = "CLI interface for Omniscient deep research agent"
+
+[[bin]]
+name = "omniscient"
+path = "src/main.rs"
+
+[dependencies]
+omniscient-core.workspace = true
+omniscient-llm.workspace = true
+omniscient-web.workspace = true
+omniscient-knowledge.workspace = true
+omniscient-research.workspace = true
+tokio.workspace = true
+clap.workspace = true
+indicatif.workspace = true
+console.workspace = true
+colored.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+chrono.workspace = true
+toml.workspace = true

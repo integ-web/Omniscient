@@ -1,0 +1,23 @@
+[package]
+name = "omniscient-research"
+version.workspace = true
+edition.workspace = true
+description = "Research pipelines — deep research, company/person profiling, reverse engineering"
+
+[dependencies]
+omniscient-core.workspace = true
+omniscient-llm.workspace = true
+omniscient-web.workspace = true
+omniscient-knowledge.workspace = true
+tokio.workspace = true
+async-trait.workspace = true
+futures.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tera.workspace = true
+pulldown-cmark.workspace = true

@@ -1,0 +1,24 @@
+{
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "security": {
+      "csp": null
+    },
+    "windows": [
+      {
+        "title": "Omniscient Research",
+        "width": 1000,
+        "height": 700,
+        "decorations": true,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  },
+  "identifier": "com.madhvi-gupta.omniscient-gui"
+}

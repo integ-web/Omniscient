@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Omniscient Research</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+  </head>
+  <body>
+    <div class="container">
+      <header class="header blur-bg">
+        <div class="logo">
+          <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+          </svg>
+          <h1>Omniscient</h1>
+        </div>
+        <div class="status-indicator">
+          <div class="dot online"></div>
+          <span>Agent Ready</span>
+        </div>
+      </header>
+
+      <main class="main-content">
+        <div class="search-container">
+          <h2 class="hero-title">What do you want to <span class="gradient-text">know?</span></h2>
+          <form id="research-form" class="search-form blur-bg">
+            <input 
+              id="query-input" 
+              class="search-input" 
+              placeholder="E.g., Latest breakthroughs in solid-state batteries..." 
+              autocomplete="off"
+            />
+            <div class="search-controls">
+              <select id="depth-select" class="depth-select">
+                <option value="quick">⚡ Quick Summary</option>
+                <option value="deep" selected>🧠 Deep Research</option>
+              </select>
+              <button type="submit" class="submit-btn">
+                <span>Research</span>
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M5 12h14M12 5l7 7-7 7"/>
+                </svg>
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div id="progress-container" class="progress-container hidden blur-bg">
+          <div class="progress-header">
+            <h3>Researching...</h3>
+            <div class="spinner"></div>
+          </div>
+          <div id="log-list" class="log-list"></div>
+        </div>
+
+        <div id="report-container" class="report-container hidden blur-bg">
+          <div class="report-header">
+            <h3>Executive Brief</h3>
+            <button id="close-report-btn" class="icon-btn">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M18 6L6 18M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+          <div id="report-content" class="markdown-body"></div>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
