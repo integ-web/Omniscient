@@ -169,17 +169,19 @@ impl OntologyContextGraph {
     pub async fn get_causal_relationships(&self, entity_id: &str, relation_type: Option<&str>) -> Result<Vec<serde_json::Value>> {
         let safe_id = format!("entity_{}", entity_id.replace("-", "_"));
 
-        let mut query = format!(
+        let query = if relation_type.is_some() {
+            "SELECT * FROM graph_edges WHERE (from_node = $id OR to_node = $id) AND reasoning != '' AND edge_type = $r_type"
+        } else {
             "SELECT * FROM graph_edges WHERE (from_node = $id OR to_node = $id) AND reasoning != ''"
-        );
+        };
+
+        let mut q = self.db.query(query).bind(("id", safe_id));
 
         if let Some(r_type) = relation_type {
-             query = format!("{} AND edge_type = '{}'", query, r_type);
+            q = q.bind(("r_type", r_type.to_string()));
         }
 
-        let mut response = self.db.query(query)
-            .bind(("id", safe_id))
-            .await
+        let mut response = q.await
             .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
 
         let results: Vec<serde_json::Value> = response.take(0).unwrap_or_default();
