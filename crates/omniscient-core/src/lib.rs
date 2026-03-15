@@ -9,16 +9,16 @@ pub mod config;
 pub mod error;
 pub mod memory;
 pub mod orchestrator;
-pub mod react_loop;
 pub mod task;
 pub mod tools;
 pub mod types;
+pub mod todo;
 
 pub use agent::{Agent, AgentContext};
 pub use config::OmniscientConfig;
 pub use error::{OmniscientError, Result};
 pub use memory::Memory;
 pub use orchestrator::Orchestrator;
-pub use react_loop::ReactLoop;
 pub use task::{ResearchTask, TaskStatus};
 pub use tools::{Tool, ToolInput, ToolOutput, ToolRegistry};
+pub use todo::TodoManager;

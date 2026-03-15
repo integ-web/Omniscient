@@ -8,8 +8,11 @@ description = "CLI interface for Omniscient deep research agent"
 name = "omniscient"
 path = "src/main.rs"
 
+[[bin]]
+name = "redteam"
+path = "src/bin/redteam.rs"
+
 [dependencies]
-rig-core = "0.2.1"
 omniscient-core.workspace = true
 omniscient-llm.workspace = true
 omniscient-web.workspace = true

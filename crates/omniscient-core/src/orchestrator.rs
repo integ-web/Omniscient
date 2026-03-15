@@ -10,12 +10,14 @@ use crate::memory::Memory;
 use crate::task::{ResearchTask, TaskStatus};
 use crate::tools::ToolRegistry;
 use crate::types::ResearchReport;
+use crate::todo::TodoManager;
 
-/// The Orchestrator — runs the full plan→execute→synthesize loop
+/// The Orchestrator — runs the Observe-Reason-Gate-Act (ORGA) cycle
 pub struct Orchestrator {
     config: OmniscientConfig,
     tools: ToolRegistry,
     memory: Memory,
+    todo: TodoManager,
 }
 
 impl Orchestrator {
@@ -24,6 +26,7 @@ impl Orchestrator {
             config,
             tools,
             memory: Memory::new(100),
+            todo: TodoManager::new(),
         }
     }
 
@@ -53,35 +56,38 @@ impl Orchestrator {
         let mut all_step_results = Vec::new();
         let mut final_synthesis: Option<Synthesis> = None;
 
-        // Main research loop: plan → execute → synthesize → repeat if needed
+        // ORGA research loop
         loop {
             context.iteration += 1;
-            info!(iteration = context.iteration, "Research iteration");
+            info!(iteration = context.iteration, "ORGA iteration");
 
-            // 1. Plan
-            task.status = TaskStatus::Planning;
-            let plan = match agent.plan(&task.query, &context).await {
-                Ok(p) => p,
-                Err(e) => {
-                    warn!("Planning failed: {}", e);
-                    break;
-                }
-            };
+            // 1. Observe/Reason (Plan)
+            if self.todo.is_empty() {
+                task.status = TaskStatus::Planning;
+                let plan = match agent.plan(&task.query, &context).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        warn!("Planning failed: {}", e);
+                        break;
+                    }
+                };
 
-            info!(
-                steps = plan.steps.len(),
-                reasoning = %plan.reasoning,
-                "Agent created plan"
-            );
+                info!(
+                    steps = plan.steps.len(),
+                    reasoning = %plan.reasoning,
+                    "Agent queued plan into TodoManager"
+                );
 
-            // 2. Execute each step
+                self.todo.push_plan(plan);
+            }
+
+            // 2. Act
             task.status = TaskStatus::Running;
-            for step in &plan.steps {
-                info!(step_id = step.id, tool = %step.tool_name, "Executing step");
+            if let Some(step) = self.todo.next_step() {
+                info!(step_id = step.id, tool = %step.tool_name, "Executing ORGA Act step");
 
-                match agent.execute_step(step, &context, &self.tools).await {
+                match agent.execute_step(&step, &context, &self.tools).await {
                     Ok(result) => {
-                        // Store findings in working memory
                         for finding in &result.findings {
                             self.memory.add_finding(finding.clone());
                             context.working_memory.push(finding.clone());
@@ -90,40 +96,42 @@ impl Orchestrator {
                     }
                     Err(e) => {
                         error!(step_id = step.id, error = %e, "Step execution failed");
-                        // Continue with remaining steps
                     }
                 }
 
-                // Update progress
-                let completed = all_step_results.len() as f64;
-                let total = plan.steps.len() as f64;
-                task.update_progress(completed / total * 0.8); // Reserve 20% for synthesis
+                task.update_progress(0.5); // Abstract progress
             }
 
-            // 3. Synthesize
-            task.status = TaskStatus::Synthesizing;
-            let synthesis = agent.synthesize(&all_step_results, &context).await?;
+            // 3. Gate (Evaluate and prune via Synthesis/Pruning logic)
+            if self.todo.is_empty() {
+                task.status = TaskStatus::Synthesizing;
+                let synthesis = agent.synthesize(&all_step_results, &context).await?;
 
-            info!(
-                confidence = synthesis.confidence,
-                gaps = synthesis.gaps.len(),
-                needs_more = synthesis.needs_more_research,
-                "Synthesis complete"
-            );
+                info!(
+                    confidence = synthesis.confidence,
+                    gaps = synthesis.gaps.len(),
+                    needs_more = synthesis.needs_more_research,
+                    "Gate check complete"
+                );
 
-            // Check if we should continue
-            if !agent.should_continue(&synthesis, &context) {
+                // Sunk Cost Immunity / Pruning
+                if synthesis.confidence < 0.3 {
+                    warn!("Confidence extremely low. Pruning current thought tree.");
+                    self.todo.prune();
+                }
+
+                if !agent.should_continue(&synthesis, &context) {
+                    final_synthesis = Some(synthesis);
+                    break;
+                }
+
+                for gap in &synthesis.gaps {
+                    self.memory
+                        .remember_short(format!("Research gap: {}", gap), 0.9);
+                }
+
                 final_synthesis = Some(synthesis);
-                break;
             }
-
-            // Add gaps as context for next iteration
-            for gap in &synthesis.gaps {
-                self.memory
-                    .remember_short(format!("Research gap: {}", gap), 0.9);
-            }
-
-            final_synthesis = Some(synthesis);
         }
 
         // Build the final report

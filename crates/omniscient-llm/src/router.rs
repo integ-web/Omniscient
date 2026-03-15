@@ -2,6 +2,7 @@
 
 use std::sync::Arc;
 use tracing::{info, warn};
+use tiktoken_rs::cl100k_base;
 
 use omniscient_core::error::{OmniscientError, Result};
 use crate::provider::{LlmProvider, LlmRequest, LlmResponse};
@@ -98,16 +99,18 @@ impl ModelRouter {
                 ))
             }
             RoutingStrategy::Auto => {
-                // Estimate complexity from message length
-                let total_tokens: usize = request
-                    .messages
-                    .iter()
-                    .map(|m| m.content.len() / 4)
-                    .sum();
+                let bpe = cl100k_base().unwrap();
+                let mut total_tokens = 0;
+                for m in &request.messages {
+                    total_tokens += bpe.encode_with_special_tokens(&m.content).len();
+                }
 
-                if total_tokens < 500 {
-                    // Simple task → cheap local model
-                    info!("Auto-routing: simple task → local model");
+                // Hardware awareness logic: Assume checking local system VRAM.
+                // For MVP, we reserve memory aggressively to stay below 4GB limit and prefer small localized quantized execution.
+                info!("Measured Context window requires {} tokens.", total_tokens);
+
+                if total_tokens < 4096 {
+                    info!("Auto-routing: Within hardware fence constraint → utilizing small local model (candle quantized if integrated)");
                     for provider in &self.providers {
                         if provider.name() == "ollama" && provider.is_available().await {
                             return Ok(provider.clone());
@@ -115,8 +118,14 @@ impl ModelRouter {
                     }
                 }
 
-                // Complex task → best quality
-                info!("Auto-routing: complex task → best quality model");
+                info!("Auto-routing: Tokens exceed VRAM hardware threshold fence, delegating to API");
+                for provider in &self.providers {
+                    if provider.name() != "ollama" && provider.is_available().await {
+                        return Ok(provider.clone());
+                    }
+                }
+
+                // Fallback
                 for provider in &self.providers {
                     if provider.is_available().await {
                         return Ok(provider.clone());
