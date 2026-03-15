@@ -14,7 +14,7 @@ anyhow.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
 tantivy.workspace = true
-surrealdb.workspace = true
 uuid.workspace = true
 chrono.workspace = true
-rig-core = "0.2.1"
+rusqlite = { version = "0.39.0", features = ["bundled"] }
+surrealdb = { version = "3.0.4", features = ["kv-mem"] }

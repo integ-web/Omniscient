@@ -5,11 +5,6 @@ use rig::providers::openai;
 async fn main() {
     println!("Starting Red Team / Stress Test logic for Rig Orchestrator...");
 
-    // For the test, we'll try to execute an investigation
-    // Usually this requires a valid OpenAI key. We'll set a mock key
-    // to just verify the orchestration pipeline logic runs without panic
-    // down to the HTTP call.
-
     unsafe {
         std::env::set_var("OPENAI_API_KEY", "sk-mock-redteam-key");
     }

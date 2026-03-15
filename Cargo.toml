@@ -53,9 +53,6 @@ regex = "1"
 # Search engine
 tantivy = "0.22"
 
-# Database
-surrealdb = { version = "2", features = ["kv-mem"] }
-
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
 
