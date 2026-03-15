@@ -7,7 +7,7 @@
 //!   omniscient config show
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::time::Duration;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -431,7 +431,7 @@ async fn main() -> Result<()> {
                         println!(
                             "   {} {}",
                             "Title:".bright_blue(),
-                            doc.title.unwrap_or_default()
+                            if doc.title.is_empty() { "" } else { doc.title.as_str() }
                         );
                         println!(
                             "   {} {}",
