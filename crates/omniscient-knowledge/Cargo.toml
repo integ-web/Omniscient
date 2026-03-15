@@ -17,3 +17,4 @@ tantivy.workspace = true
 surrealdb.workspace = true
 uuid.workspace = true
 chrono.workspace = true
+rig-core = "0.2.1"

@@ -9,6 +9,7 @@ name = "omniscient"
 path = "src/main.rs"
 
 [dependencies]
+rig-core = "0.2.1"
 omniscient-core.workspace = true
 omniscient-llm.workspace = true
 omniscient-web.workspace = true

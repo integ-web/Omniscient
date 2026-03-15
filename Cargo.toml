@@ -56,9 +56,6 @@ tantivy = "0.22"
 # Database
 surrealdb = { version = "2", features = ["kv-mem"] }
 
-# Parallel computation
-rayon = "1"
-
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
 
