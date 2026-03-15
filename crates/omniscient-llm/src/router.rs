@@ -68,13 +68,13 @@ impl ModelRouter {
                 ))
             }
             RoutingStrategy::Cheapest => {
-                // Prefer local providers (Ollama) over API providers
+                // Prefer local providers over API providers using proper capability flags
                 for provider in &self.providers {
-                    if provider.name() == "ollama" && provider.is_available().await {
+                    if provider.capabilities().is_local && provider.is_available().await {
                         return Ok(provider.clone());
                     }
                 }
-                // Fall back to first available
+                // Fall back to first available API
                 for provider in &self.providers {
                     if provider.is_available().await {
                         return Ok(provider.clone());
@@ -85,13 +85,10 @@ impl ModelRouter {
                 ))
             }
             RoutingStrategy::BestQuality => {
-                // Prefer API providers (Anthropic > OpenAI > Ollama)
-                let priority = ["anthropic", "openai", "ollama"];
-                for name in &priority {
-                    for provider in &self.providers {
-                        if provider.name() == *name && provider.is_available().await {
-                            return Ok(provider.clone());
-                        }
+                // Prefer API providers (large context windows generally mean APIs)
+                for provider in &self.providers {
+                    if !provider.capabilities().is_local && provider.is_available().await {
+                        return Ok(provider.clone());
                     }
                 }
                 Err(OmniscientError::ModelNotAvailable(
@@ -105,22 +102,23 @@ impl ModelRouter {
                     total_tokens += bpe.encode_with_special_tokens(&m.content).len();
                 }
 
-                // Hardware awareness logic: Assume checking local system VRAM.
-                // For MVP, we reserve memory aggressively to stay below 4GB limit and prefer small localized quantized execution.
+                // Mock Hardware Probe logic: strict 2048 MB VRAM reservation limit.
+                let system_vram_limit = 2048;
                 info!("Measured Context window requires {} tokens.", total_tokens);
 
                 if total_tokens < 4096 {
-                    info!("Auto-routing: Within hardware fence constraint → utilizing small local model (candle quantized if integrated)");
+                    info!("Auto-routing: Within hardware fence constraint → checking provider VRAM requirements");
                     for provider in &self.providers {
-                        if provider.name() == "ollama" && provider.is_available().await {
+                        let caps = provider.capabilities();
+                        if caps.is_local && caps.vram_requirement_mb <= system_vram_limit && provider.is_available().await {
                             return Ok(provider.clone());
                         }
                     }
                 }
 
-                info!("Auto-routing: Tokens exceed VRAM hardware threshold fence, delegating to API");
+                info!("Auto-routing: Tokens exceed VRAM hardware threshold fence or no local model fits constraint. Delegating to API.");
                 for provider in &self.providers {
-                    if provider.name() != "ollama" && provider.is_available().await {
+                    if !provider.capabilities().is_local && provider.is_available().await {
                         return Ok(provider.clone());
                     }
                 }

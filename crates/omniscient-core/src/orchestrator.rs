@@ -11,6 +11,7 @@ use crate::task::{ResearchTask, TaskStatus};
 use crate::tools::ToolRegistry;
 use crate::types::ResearchReport;
 use crate::todo::TodoManager;
+use crate::taint::{UntrustedValue, PrincipalChecker};
 
 /// The Orchestrator — runs the Observe-Reason-Gate-Act (ORGA) cycle
 pub struct Orchestrator {
@@ -88,11 +89,17 @@ impl Orchestrator {
 
                 match agent.execute_step(&step, &context, &self.tools).await {
                     Ok(result) => {
-                        for finding in &result.findings {
-                            self.memory.add_finding(finding.clone());
-                            context.working_memory.push(finding.clone());
+                        // Taint checking logic: Ensure scraped/LLM outputs pass Gate Phase
+                        let untrusted_findings = UntrustedValue::new(result.findings.clone());
+                        if let Some(trusted) = PrincipalChecker::verify_findings(untrusted_findings) {
+                            for finding in &trusted.into_inner() {
+                                self.memory.add_finding(finding.clone());
+                                context.working_memory.push(finding.clone());
+                            }
+                            all_step_results.push(result);
+                        } else {
+                            warn!("Execution result failed Security Gate. Tainted payload rejected.");
                         }
-                        all_step_results.push(result);
                     }
                     Err(e) => {
                         error!(step_id = step.id, error = %e, "Step execution failed");

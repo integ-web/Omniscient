@@ -167,11 +167,15 @@ impl LlmProvider for OpenAiProvider {
         })
     }
 
-    fn context_window(&self) -> usize {
-        match self.model.as_str() {
-            m if m.contains("gpt-4") => 128_000,
-            m if m.contains("gpt-3.5") => 16_385,
-            _ => 8_192,
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities {
+            is_local: false,
+            vram_requirement_mb: 0,
+            context_window: match self.model.as_str() {
+                m if m.contains("gpt-4") => 128_000,
+                m if m.contains("gpt-3.5") => 16_385,
+                _ => 8_192,
+            },
         }
     }
 }
@@ -283,7 +287,13 @@ impl LlmProvider for AnthropicProvider {
         })
     }
 
-    fn context_window(&self) -> usize { 200_000 }
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities {
+            is_local: false,
+            vram_requirement_mb: 0,
+            context_window: 200_000,
+        }
+    }
 }
 
 // ──────────────────────────────────────────────
@@ -394,5 +404,12 @@ impl LlmProvider for OllamaProvider {
         })
     }
 
-    fn context_window(&self) -> usize { 8192 }
+    fn capabilities(&self) -> ModelCapabilities {
+        ModelCapabilities {
+            is_local: true,
+            // Assuming default local execution requires ~4096 MB VRAM footprint minimum for 7B models.
+            vram_requirement_mb: 4096,
+            context_window: 8192,
+        }
+    }
 }

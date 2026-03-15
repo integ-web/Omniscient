@@ -1,8 +1,8 @@
 //! Knowledge Graph — SurrealDB-backed entity-relationship graph
 
 use serde::{Deserialize, Serialize};
-use surrealdb::engine::local::{Db, Mem};
-use surrealdb::Surreal;
+use rusqlite::{Connection, params};
+use std::sync::Mutex;
 use tracing::{debug, info};
 
 use omniscient_core::error::{OmniscientError, Result};
@@ -30,41 +30,69 @@ pub struct GraphDocument {
     pub timestamp: String,
 }
 
-/// SurrealDB-backed knowledge graph for entities and relationships
+/// Embedded SQLite relational Knowledge Graph for entities and relationships
 pub struct KnowledgeGraph {
-    db: Surreal<Db>,
+    db: Mutex<Connection>,
 }
 
 impl KnowledgeGraph {
-    /// Create a new in-memory knowledge graph
+    /// Create a new in-memory SQLite knowledge graph
     pub async fn new_memory() -> Result<Self> {
-        let db = Surreal::new::<Mem>(())
-            .await
+        let db = Connection::open_in_memory()
             .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
 
-        db.use_ns("omniscient")
-            .use_db("research")
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS entity (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                entity_type TEXT NOT NULL,
+                attributes TEXT
+            )",
+            [],
+        ).map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
 
-        info!("Knowledge graph initialized (in-memory)");
-        Ok(Self { db })
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS relationship (
+                id INTEGER PRIMARY KEY,
+                from_id TEXT NOT NULL,
+                to_id TEXT NOT NULL,
+                relation_type TEXT NOT NULL,
+                confidence REAL NOT NULL,
+                source TEXT NOT NULL,
+                context TEXT,
+                FOREIGN KEY(from_id) REFERENCES entity(id),
+                FOREIGN KEY(to_id) REFERENCES entity(id)
+            )",
+            [],
+        ).map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS document (
+                id TEXT PRIMARY KEY,
+                title TEXT NOT NULL,
+                url TEXT,
+                source TEXT NOT NULL,
+                summary TEXT,
+                timestamp TEXT NOT NULL
+            )",
+            [],
+        ).map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+
+        info!("Knowledge graph initialized (in-memory SQLite)");
+        Ok(Self { db: Mutex::new(db) })
     }
 
     /// Add an entity to the graph
     pub async fn add_entity(&self, entity: &Entity) -> Result<()> {
-        let table = entity_type_table(&entity.entity_type);
+        let conn = self.db.lock().unwrap();
 
-        let _: Option<serde_json::Value> = self
-            .db
-            .create((table, entity.id.to_string()))
-            .content(serde_json::json!({
-                "name": entity.name,
-                "entity_type": format!("{:?}", entity.entity_type),
-                "attributes": entity.attributes,
-            }))
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+        let attrs = serde_json::to_string(&entity.attributes)
+            .unwrap_or_else(|_| "{}".to_string());
+
+        conn.execute(
+            "INSERT OR REPLACE INTO entity (id, name, entity_type, attributes) VALUES (?1, ?2, ?3, ?4)",
+            params![entity.id.to_string(), entity.name, format!("{:?}", entity.entity_type), attrs],
+        ).map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
 
         debug!(entity = %entity.name, "Entity added to graph");
         Ok(())
@@ -72,23 +100,12 @@ impl KnowledgeGraph {
 
     /// Add a relationship between two entities
     pub async fn add_relationship(&self, rel: &Relationship) -> Result<()> {
-        let query = format!(
-            "RELATE {}:{}->{}->{}:{}",
-            "entity", rel.from_id, rel.relation_type, "entity", rel.to_id
-        );
+        let conn = self.db.lock().unwrap();
 
-        // Clone everything to owned values for SurrealDB's 'static requirement
-        let confidence = rel.confidence;
-        let source = rel.source.clone();
-        let context = rel.context.clone();
-
-        self.db
-            .query(&query)
-            .bind(("confidence", confidence))
-            .bind(("source", source))
-            .bind(("context", context))
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+        conn.execute(
+            "INSERT INTO relationship (from_id, to_id, relation_type, confidence, source, context) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![rel.from_id, rel.to_id, rel.relation_type, rel.confidence, rel.source, rel.context],
+        ).map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
 
         debug!(
             from = %rel.from_id,
@@ -101,75 +118,81 @@ impl KnowledgeGraph {
 
     /// Store a document reference in the graph
     pub async fn add_document(&self, doc: &GraphDocument) -> Result<()> {
-        // Clone to owned for SurrealDB's 'static requirement
-        let doc_owned = doc.clone();
-        let doc_id = doc.id.clone();
+        let conn = self.db.lock().unwrap();
 
-        let _: Option<serde_json::Value> = self
-            .db
-            .create(("document", doc_id))
-            .content(doc_owned)
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+        conn.execute(
+            "INSERT OR REPLACE INTO document (id, title, url, source, summary, timestamp) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![doc.id, doc.title, doc.url, doc.source, doc.summary, doc.timestamp],
+        ).map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
 
         Ok(())
     }
 
     /// Find entities by name (partial match)
     pub async fn find_entities(&self, name: &str) -> Result<Vec<serde_json::Value>> {
-        // Clone to owned for SurrealDB's 'static requirement
-        let name_owned = name.to_string();
+        let conn = self.db.lock().unwrap();
 
-        let results: Vec<serde_json::Value> = self
-            .db
-            .query("SELECT * FROM entity WHERE name CONTAINS $name")
-            .bind(("name", name_owned))
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?
-            .take(0)
+        let mut stmt = conn.prepare("SELECT id, name, entity_type, attributes FROM entity WHERE name LIKE ?1")
             .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+
+        let search_pattern = format!("%{}%", name);
+        let mut rows = stmt.query(params![search_pattern])
+            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+
+        let mut results = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))? {
+            let attrs: String = row.get(3).unwrap_or_else(|_| "{}".to_string());
+            let entity_json = serde_json::json!({
+                "id": row.get::<_, String>(0).unwrap_or_default(),
+                "name": row.get::<_, String>(1).unwrap_or_default(),
+                "entity_type": row.get::<_, String>(2).unwrap_or_default(),
+                "attributes": serde_json::from_str::<serde_json::Value>(&attrs).unwrap_or(serde_json::json!({}))
+            });
+            results.push(entity_json);
+        }
 
         Ok(results)
     }
 
     /// Get all relationships for an entity
     pub async fn get_relationships(&self, entity_id: &str) -> Result<Vec<serde_json::Value>> {
-        // Clone to owned for SurrealDB's 'static requirement
-        let id_owned = entity_id.to_string();
+        let conn = self.db.lock().unwrap();
 
-        let results: Vec<serde_json::Value> = self
-            .db
-            .query("SELECT * FROM relationship WHERE from_id = $id OR to_id = $id")
-            .bind(("id", id_owned))
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?
-            .take(0)
+        let mut stmt = conn.prepare("SELECT from_id, to_id, relation_type, confidence, source, context FROM relationship WHERE from_id = ?1 OR to_id = ?1")
             .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+
+        let mut rows = stmt.query(params![entity_id])
+            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+
+        let mut results = Vec::new();
+        while let Some(row) = rows.next().map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))? {
+            let rel_json = serde_json::json!({
+                "from_id": row.get::<_, String>(0).unwrap_or_default(),
+                "to_id": row.get::<_, String>(1).unwrap_or_default(),
+                "relation_type": row.get::<_, String>(2).unwrap_or_default(),
+                "confidence": row.get::<_, f64>(3).unwrap_or(0.0),
+                "source": row.get::<_, String>(4).unwrap_or_default(),
+                "context": row.get::<_, Option<String>>(5).unwrap_or_default()
+            });
+            results.push(rel_json);
+        }
 
         Ok(results)
     }
 
     /// Get graph statistics
     pub async fn stats(&self) -> Result<serde_json::Value> {
-        let entities: Vec<serde_json::Value> = self
-            .db
-            .query("SELECT count() FROM entity GROUP ALL")
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?
-            .take(0)
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+        let conn = self.db.lock().unwrap();
 
-        let docs: Vec<serde_json::Value> = self
-            .db
-            .query("SELECT count() FROM document GROUP ALL")
-            .await
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?
-            .take(0)
-            .map_err(|e| OmniscientError::KnowledgeGraph(e.to_string()))?;
+        let entities_count: i64 = conn.query_row("SELECT COUNT(*) FROM entity", [], |row| row.get(0))
+            .unwrap_or(0);
+
+        let docs_count: i64 = conn.query_row("SELECT COUNT(*) FROM document", [], |row| row.get(0))
+            .unwrap_or(0);
 
         Ok(serde_json::json!({
-            "entities": entities.first().unwrap_or(&serde_json::Value::Null),
-            "documents": docs.first().unwrap_or(&serde_json::Value::Null),
+            "entities": entities_count,
+            "documents": docs_count,
         }))
     }
 }

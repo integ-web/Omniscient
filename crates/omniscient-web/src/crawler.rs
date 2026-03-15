@@ -8,7 +8,6 @@ use std::time::Duration;
 use tokio::sync::Semaphore;
 use tracing::{debug, info, warn};
 use url::Url;
-use chromiumoxide::browser::{Browser, BrowserConfig as ChromeConfig};
 use futures::StreamExt;
 
 use omniscient_core::error::{OmniscientError, Result};
@@ -81,51 +80,38 @@ impl WebCrawler {
         }
     }
 
-    /// Fetch a single page using a headless browser (for JS-heavy sites)
-    pub async fn fetch_page_with_browser(&self, url: &str) -> Result<CrawlResult> {
-        info!("Fetching with browser: {}", url);
+    /// Fetch a single page using pure-Rust heuristics engine (SPA fallback)
+    pub async fn fetch_page_with_heuristics(&self, html: &str, url: &str) -> Result<CrawlResult> {
+        info!("Applying SPA/JSON heuristics for: {}", url);
 
-        let (mut browser, mut handler) = Browser::launch(ChromeConfig::builder().build().map_err(|e| OmniscientError::Web(e.to_string()))?)
-            .await
-            .map_err(|e| OmniscientError::Web(e.to_string()))?;
+        let mut text_content = String::new();
 
-        // Spawn the handler in the background
-        let handle = tokio::spawn(async move {
-            while let Some(h) = handler.next().await {
-                if h.is_err() {
-                    break;
+        // Very basic Next.js / React JSON state data extraction
+        if let Some(start) = html.find(r#"<script id="__NEXT_DATA__""#) {
+            if let Some(data_start) = html[start..].find('>') {
+                if let Some(end) = html[start + data_start + 1..].find("</script>") {
+                    let json_str = &html[start + data_start + 1..start + data_start + 1 + end];
+                    if let Ok(json_data) = serde_json::from_str::<serde_json::Value>(json_str) {
+                        text_content.push_str(&format!("SPA JSON Data:\n{:#?}", json_data));
+                    }
                 }
             }
-        });
+        }
 
-        let page = browser
-            .new_page(url)
-            .await
-            .map_err(|e| OmniscientError::Web(e.to_string()))?;
+        // Add standard extracted fallback
+        let extracted = self.extractor.extract(html, url);
+        let links = self.extractor.extract_links(html, url);
 
-        // Wait for it to be fully loaded
-        page.wait_for_navigation()
-            .await
-            .map_err(|e| OmniscientError::Web(e.to_string()))?;
-
-        let html = page
-            .content()
-            .await
-            .map_err(|e| OmniscientError::Web(e.to_string()))?;
-
-        // Close browser
-        browser.close().await.ok();
-        handle.await.ok();
-
-        // Extract content
-        let extracted = self.extractor.extract(&html, url);
-        let links = self.extractor.extract_links(&html, url);
+        if !text_content.is_empty() {
+            text_content.push_str("\n\nExtracted Visible Text:\n");
+        }
+        text_content.push_str(&extracted.clean_text);
 
         let document = Document {
             id: uuid::Uuid::new_v4(),
             url: Some(url.to_string()),
             title: extracted.title.clone(),
-            content: extracted.clean_text.clone(),
+            content: text_content,
             content_type: ContentType::WebPage,
             metadata: DocumentMetadata {
                 author: extracted.author.clone(),
@@ -140,7 +126,7 @@ impl WebCrawler {
 
         Ok(CrawlResult {
             url: url.to_string(),
-            status: 200, // Success if we got here
+            status: 200,
             document: Some(document),
             links,
             error: None,
@@ -149,10 +135,6 @@ impl WebCrawler {
 
     /// Fetch a single page and extract content
     pub async fn fetch_page(&self, url: &str) -> Result<CrawlResult> {
-        if self.config.use_browser {
-            return self.fetch_page_with_browser(url).await;
-        }
-
         debug!("Fetching: {}", url);
 
         let response = self
@@ -176,34 +158,11 @@ impl WebCrawler {
 
         let html = response.text().await.map_err(|e| OmniscientError::Web(e.to_string()))?;
 
-        // Extract content
-        let extracted = self.extractor.extract(&html, url);
-        let links = self.extractor.extract_links(&html, url);
+        // Pass through heuristics to grab any SPA embedded JSON config if useful
+        let mut result = self.fetch_page_with_heuristics(&html, url).await?;
+        result.status = status;
 
-        let document = Document {
-            id: uuid::Uuid::new_v4(),
-            url: Some(url.to_string()),
-            title: extracted.title.clone(),
-            content: extracted.clean_text.clone(),
-            content_type: ContentType::WebPage,
-            metadata: DocumentMetadata {
-                author: extracted.author.clone(),
-                published_date: None,
-                source: url.to_string(),
-                word_count: extracted.clean_text.split_whitespace().count(),
-                language: None,
-                tags: Vec::new(),
-            },
-            extracted_at: chrono::Utc::now(),
-        };
-
-        Ok(CrawlResult {
-            url: url.to_string(),
-            status,
-            document: Some(document),
-            links,
-            error: None,
-        })
+        Ok(result)
     }
 
     /// Crawl a site starting from a URL, up to max_depth and max_pages
