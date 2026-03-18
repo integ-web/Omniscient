@@ -13,6 +13,7 @@ pub mod task;
 pub mod tools;
 pub mod types;
 pub mod todo;
+pub mod taint;
 
 pub use agent::{Agent, AgentContext};
 pub use config::OmniscientConfig;

@@ -60,6 +60,14 @@ pub enum FinishReason {
     Error(String),
 }
 
+/// Represents the hardware footprint required by a specific LLM Provider.
+#[derive(Debug, Clone)]
+pub struct ModelCapabilities {
+    pub is_local: bool,
+    pub vram_requirement_mb: usize,
+    pub context_window: usize,
+}
+
 /// Core LLM provider trait
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
@@ -69,6 +77,9 @@ pub trait LlmProvider: Send + Sync {
     /// Get the model name
     fn model(&self) -> &str;
 
+    /// Retrieve the hardware capabilities of this specific model.
+    fn capabilities(&self) -> ModelCapabilities;
+
     /// Check if the provider is available and ready
     async fn is_available(&self) -> bool;
 
@@ -76,11 +87,7 @@ pub trait LlmProvider: Send + Sync {
     async fn complete(&self, request: &LlmRequest) -> Result<LlmResponse>;
 
     /// Get the context window size
-    fn context_window(&self) -> usize;
-
-    /// Estimate token count for a string
-    fn estimate_tokens(&self, text: &str) -> usize {
-        // Rough estimate: ~4 chars per token
-        text.len() / 4
+    fn context_window(&self) -> usize {
+        self.capabilities().context_window
     }
 }
